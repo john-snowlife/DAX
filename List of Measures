@@ -1,0 +1,68 @@
+## The object is to dynamically display the number of listed companies whose Monthly Traded Value is above a minimum level as calculated by a number of paramaters. 
+## The table looks as follows
+Ticker	Month value traded (ZAR M)	Code
+NPN SJ Equity	 60,300 	NPN
+SOL SJ Equity	 18,788 	SOL
+MTN SJ Equity	 17,986 	MTN
+SNH SJ Equity	 16,124 	SNH
+FSR SJ Equity	 15,862 	FSR
+SBK SJ Equity	 14,974 	SBK
+BTI SJ Equity	 13,925 	BTI
+AGL SJ Equity	 13,074 	AGL
+SHP SJ Equity	 12,006 	SHP
+BIL SJ Equity	 11,477 	BIL
+SLM SJ Equity	 8,955 	SLM
+WHL SJ Equity	 8,658 	WHL
+APN SJ Equity	 8,528 	APN
+BGA SJ Equity	 7,668 	BGA
+OML SJ Equity	 6,930 	OML
+EXX SJ Equity	 6,851 	EXX
+BID SJ Equity	 6,525 	BID
+ANG SJ Equity	 6,406 	ANG
+REM SJ Equity	 6,300 	REM
+
+## Parameters required
+ActiveRequirement = GENERATESERIES(10, 100, 10)
+EquityPositionSizeP = GENERATESERIES(0.005, 0.1, 0.005)
+EquitySizeP = GENERATESERIES(500, 500000, 500)
+MonthsToBuildP = GENERATESERIES(1, 6, 1)
+ParticipationRateP = GENERATESERIES(0.1, 0.5, 0.1)
+
+CountActiveCompanies =
+CALCULATE (
+    COUNTX (
+        'UniverseLiquidity Clean',
+        SUM ( 'UniverseLiquidity Clean'[Month value traded (ZAR M)] )
+    ),
+    FILTER (
+        'UniverseLiquidity Clean',
+        'UniverseLiquidity Clean'[Month value traded (ZAR M)]
+            > ActiveRequirement[ActiveRequirement Value]
+    )
+)
+
+CountCompaniesAbove =
+CALCULATE (
+    COUNTX ( 'UniverseLiquidity Clean', [MonthValueTradedAbove] ),
+    FILTER (
+        'UniverseLiquidity Clean',
+        'UniverseLiquidity Clean'[Month value traded (ZAR M)] > [MinMonthlyTradedValue]
+    )
+)
+MinMonthlyTradedValue =
+MAX ( EquitySizeP[EquitySizeP] )
+    * DIVIDE (
+        DIVIDE (
+            SELECTEDVALUE ( EquityPositionSizeP[EquityPositionSizeP] ),
+            SELECTEDVALUE ( 'MonthsToBuildP'[MonthsToBuild] )
+        ),
+        SELECTEDVALUE ( ParticipationRateP[ParticipationRateP] )
+    )
+MonthValueTradedAbove =
+IF (
+    SUM ( 'UniverseLiquidity Clean'[Month value traded (ZAR M)] )
+        > [MinMonthlyTradedValue],
+    SUM ( 'UniverseLiquidity Clean'[Month value traded (ZAR M)] ),
+    0
+)
+
