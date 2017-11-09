@@ -1,0 +1,173 @@
+Performance Calculations
+Date Selection
+## Determines the first Date shared by the Fund and the Benchmark so that the shared date is used as the minimum date for comparing performance over periods longer than the fund has been in existence. 
+FirstSharedDate =
+CALCULATE (
+    MAXX (
+        SUMMARIZE (
+            ALLSELECTED ( AllPerfMnthly[Portfolio] ),
+            [Portfolio],
+            "ABCD", MIN ( AllPerfMnthly[Date] )
+        ),
+        [ABCD]
+    ),
+    ALLEXCEPT ( AllPerfMnthly, AllPerfMnthly[Portfolio] )
+)
+## Determines the inception date of the fund. 
+InceptionDate =
+CALCULATE (
+    FIRSTNONBLANK ( AllPerfMnthly[Date], AllPerfMnthly[Date] ),
+    ALLEXCEPT ( AllPerfMnthly, AllPerfMnthly[Portfolio] )
+)
+
+Performance using Variable Period Columns
+
+## Calculates the cumulative performance for the period determined by the name of the column that the calculation is in. 
+PerfCumVar = 
+VAR EndDate =
+    MAXx(AllPerfMnthly,AllPerfMnthly[Date])
+VAR BeginDate =
+    CALCULATE (
+        EOMONTH ( EDATE ( EndDate, -12*Years[Years Value] ), 0 ),
+        ALLSELECTED ( 'Calendar'[Date] )
+    )
+VAR Months = DATEDIFF(BeginDate,EndDate,MONTH)
+RETURN
+    IF (
+        or(MAXX(AllPerfMnthly,AllPerfMnthly[Date]) < EndDate, 
+                BeginDate <= [InceptionDate]),
+                BLANK (),
+                CALCULATE (
+                    PRODUCTX ( 'AllPerfMnthly', ( 1 + 'AllPerfMnthly'[PerfMnthly] ) ),
+                    FILTER (
+                        ALLEXCEPT ( 'AllPerfMnthly', AllPerfMnthly[Portfolio] ),
+                        'AllPerfMnthly'[Date] > BeginDate
+                            && 'AllPerfMnthly'[Date] <= EndDate
+                    )
+                ) - 1
+            )
+
+## Calculates the annualised performance for the period determined by the name of the column that the calculation is in. 
+PerfCumVar2pa = 
+VAR EndDate =
+    MAXX ( AllPerfMnthly, AllPerfMnthly[Date] )
+VAR Months =
+    IF (
+            SELECTEDVALUE ( PerfPeriods2[Months] ) = 0,
+                DATEDIFF ( [InceptionDate], EndDate, MONTH ),
+        if(
+            SELECTEDVALUE ( PerfPeriods2[Months] ) < 12, BLANK(),
+        SELECTEDVALUE ( PerfPeriods2[Months] )
+    ))
+VAR BeginDate =
+    CALCULATE (
+        EOMONTH ( EDATE ( EndDate, - Months ), 0 ),
+        ALLSELECTED ( 'Calendar'[Date] )
+    )
+RETURN
+ IF (
+        OR (
+            MAXX ( AllPerfMnthly, AllPerfMnthly[Date] ) < EndDate,
+            BeginDate < [InceptionDate] || Months < 12
+        ),
+        BLANK (),
+        CALCULATE (
+            PRODUCTX ( 'AllPerfMnthly', ( 1 + 'AllPerfMnthly'[PerfMnthly] ) ),
+            FILTER (
+                ALLEXCEPT ( 'AllPerfMnthly', AllPerfMnthly[Portfolio] ),
+                'AllPerfMnthly'[Date] > BeginDate
+                    && 'AllPerfMnthly'[Date] <= EndDate
+            )
+        )^(12/Months)
+            - 1
+    )
+## Calculates the cumulative performance for the fund from inception. 
+Inception =
+VAR EndDate =
+    MAXx(AllPerfMnthly,AllPerfMnthly[Date])
+VAR BeginDate = max(
+    CALCULATE (
+        FIRSTNONBLANK(AllPerfMnthly[Date],AllPerfMnthly[Date]),
+        ALLEXCEPT(AllPerfMnthly, AllPerfMnthly[Portfolio] )
+    ),eomonth([FirstSharedDate],1))
+RETURN
+      if(EndDate <= [FirstSharedDate],blank(),  IF (
+            BeginDate < [FirstSharedDate],
+            BLANK (),
+            CALCULATE (
+                PRODUCTX ( 'AllPerfMnthly', ( 1 + 'AllPerfMnthly'[PerfMnthly] ) ),
+                FILTER (
+                    ALLEXCEPT ( 'AllPerfMnthly', AllPerfMnthly[Portfolio] ),
+                    'AllPerfMnthly'[Date] >= BeginDate
+                        && 'AllPerfMnthly'[Date] <= EndDate
+                )
+            )
+                - SUMX ( AllPerfMnthly, 1 )
+        ))
+
+
+## Calculates the cumulative performance for the fund for the hard-coded periods
+1YR =
+VAR EndDate =
+    MAXx(AllPerfMnthly,AllPerfMnthly[Date])
+VAR BeginDate =
+    CALCULATE (
+        EOMONTH ( EDATE ( EndDate, -12 ), 0 ),
+        ALLSELECTED ( 'Calendar'[Date] )
+    )
+RETURN
+    IF (
+            MAXX(AllPerfMnthly,AllPerfMnthly[Date])
+             = EndDate,
+                    IF (
+                BeginDate <= [InceptionDate],
+                BLANK (),
+                CALCULATE (
+                    PRODUCTX ( 'AllPerfMnthly', ( 1 + 'AllPerfMnthly'[PerfMnthly] ) ),
+                    FILTER (
+                        ALLEXCEPT ( 'AllPerfMnthly', AllPerfMnthly[Portfolio] ),
+                        'AllPerfMnthly'[Date] > BeginDate
+                            && 'AllPerfMnthly'[Date] <= EndDate
+                    )
+                )
+                    - SUMX ( AllPerfMnthly, 1 )
+            ),
+            BLANK ()
+        )
+## Calculates the cumulative performance for the fund for the variable Year-to-date
+YTD = 
+VAR EndDate =
+    MAXx(AllPerfMnthly,AllPerfMnthly[Date])
+VAR BeginDate =
+    CALCULATE (
+        EOMONTH (EndDate, -MONTH(EndDate)),
+        ALLSELECTED ( 'Calendar'[Date] )
+    )
+RETURN
+    IF (
+            MAXX(AllPerfMnthly,AllPerfMnthly[Date])
+             = EndDate, 
+                    IF (
+                BeginDate <= [InceptionDate],
+                BLANK (),
+                CALCULATE (
+                    PRODUCTX ( 'AllPerfMnthly', ( 1 + 'AllPerfMnthly'[PerfMnthly] ) ),
+                    FILTER (
+                        ALLEXCEPT ( 'AllPerfMnthly', AllPerfMnthly[Portfolio] ),
+                        'AllPerfMnthly'[Date] > BeginDate
+                            && 'AllPerfMnthly'[Date] <= EndDate
+                    )
+                )
+                    - SUMX ( AllPerfMnthly, 1 )
+            ),
+            BLANK ()
+        )
+
+## Calculates the instruments Sharpe Ratio based on 1 year returns, volatility and a set hurdle rate. 
+Sharpe1YR = 
+DIVIDE (
+    ( AllPerfMnthly[1YR] - 0.08),
+    [StdDev1yr],
+    0
+)            
+            
