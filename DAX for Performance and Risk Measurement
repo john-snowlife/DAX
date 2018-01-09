@@ -1,3 +1,4 @@
+'''DAX
 Performance Calculations
 Date Selection
 ## Determines the first Date shared by the Fund and the Benchmark so that the shared date is used as the minimum date for comparing performance over periods longer than the fund has been in existence. 
@@ -170,4 +171,5 @@ DIVIDE (
     [StdDev1yr],
     0
 )            
-            
+'''
+
