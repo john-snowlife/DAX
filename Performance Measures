@@ -1,0 +1,179 @@
+Date Selection
+
+FirstSharedDate = 
+// Identifies the first date that both fund and benchmark were in existence.
+CALCULATE (
+    MAXX (
+        SUMMARIZE (
+ // Returns a short table with one row per Name in column, adds a column named [EarliestDate] which contains the minimum date in AllPerfMnthly[Date] for that Name.
+           ALLSELECTED ( AllPerfMnthly[Name] ),
+            [Name],
+            "EarliestDate", MIN ( AllPerfMnthly[Date] )
+        ),
+  // Applies the Max function to the [EarliestDate] column
+       [EarliestDate]
+    ),
+   // Applies the function to the AllperfMnthly table where [Name] is filtered for the selected fund in the slicer
+   ALLEXCEPT ( AllPerfMnthly, AllPerfMnthly[Name] )
+)
+
+InceptionDate =
+// Selects first non blank date to get inception date.
+CALCULATE (
+    FIRSTNONBLANK ( AllPerfMnthly[Date], AllPerfMnthly[Date] ),
+    ALLEXCEPT ( AllPerfMnthly, AllPerfMnthly[Name] )
+)
+
+Performance using Variable Period Columns
+PerfCumVarN =
+// Cumulative Performance for a Variable period as per the period selected in the PerfPeriods2 table. 
+VAR EndDate =
+    MAXX ( AllPerfMnthly, AllPerfMnthly[Date] )
+VAR Months =
+    //First checks if selected period is a special instance (YtD or Inception) and calculates the correct number of months to use for those. 
+    IF (
+        OR (
+            SELECTEDVALUE ( PerfPeriods2[Months] ) = 0,
+            SELECTEDVALUE ( PerfPeriods2[Months] ) = 11
+        ),
+        SWITCH (
+            SELECTEDVALUE ( PerfPeriods2[Months] ),
+            0, DATEDIFF ( [InceptionDate], EndDate, MONTH ),
+            11, MONTH ( EndDate )
+        ),
+        SELECTEDVALUE ( PerfPeriods2[Months] )
+    )
+VAR BeginDate =
+    // Calculates beginning date as per relevant criteria
+    CALCULATE (
+        EOMONTH ( EDATE ( EndDate, - Months ), 0 ),
+        ALLSELECTED ( 'Calendar'[Date] )
+    )
+RETURN
+    IF (
+        //Return blank if calculation doesn't make sense for the date range.
+        OR (
+            MAXX ( AllPerfMnthly, AllPerfMnthly[Date] ) < EndDate,
+            BeginDate < [InceptionDate]
+        ),
+        BLANK (),
+        CALCULATE (
+            //Excel Equivalent is {=Product(1+A1:A100)-1} and does this per fund after filtering the table for the correct date range.         
+            PRODUCTX (
+                'AllPerfMnthly',
+                ( 1 + 'AllPerfMnthly'[1 Month] )
+            ),
+            FILTER (
+                ALL ( 'Calendar' ),
+                Calendar[Date] > BeginDate
+                    && Calendar[Date] <= EndDate
+            )
+        )
+            - 1
+    )
+
+PerfCumVarNpa = 
+//Explanation as per PerfCumVarN except annualised
+VAR EndDate =
+    MAXX ( AllPerfMnthly, AllPerfMnthly[Date] )
+VAR Months =
+    IF (
+            SELECTEDVALUE ( PerfPeriods2[Months] ) = 0,
+                DATEDIFF ( [InceptionDate], EndDate, MONTH ),
+        if(
+            SELECTEDVALUE ( PerfPeriods2[Months] ) < 12, BLANK(),
+        SELECTEDVALUE ( PerfPeriods2[Months] )
+    ))
+VAR BeginDate =
+    CALCULATE (
+        EOMONTH ( EDATE ( EndDate, - Months ), 0 ),
+        ALLSELECTED ( 'Calendar'[Date] )
+    )
+RETURN
+ IF (
+        OR (
+            MAXX ( AllPerfMnthly, AllPerfMnthly[Date] ) < EndDate,
+            BeginDate < [InceptionDate] || Months < 12
+        ),
+        blank(),
+        CALCULATE (
+            PRODUCTX ( 'AllPerfMnthly', ( 1 + 'AllPerfMnthly'[1 Month] ) ),
+            FILTER (
+                ALL ( 'Calendar'),
+                'Calendar'[Date] > BeginDate
+                    && 'Calendar'[Date] <= EndDate
+            )
+               //Annualises the performance
+        )^(12/Months)
+            - 1
+    )
+
+Inception pm = 
+//Calculates the cumulative inception per fund up to the relevant date. Is used to draw line charts of performance. 
+VAR EndDate =
+//Row date set to EndDate
+    MAXX(AllPerfMnthly,AllPerfMnthly[Date])
+VAR BeginDate = 
+//Latest of inception or FirstSharedDate.  
+    max(
+    CALCULATE (
+        FIRSTNONBLANK(AllPerfMnthly[Date],AllPerfMnthly[Date]),
+        ALLEXCEPT(AllPerfMnthly, AllPerfMnthly[Name] )
+    ),eomonth([FirstSharedDate],1))
+RETURN
+ if(
+ //Return blank if calculation doesn't make sense for the date range.
+    OR(EndDate <= [FirstSharedDate],BeginDate < [FirstSharedDate]),blank(),
+            CALCULATE (
+                //Excel Equivalent is {=Product(1+A1:A100)-1} and does this per fund after filtering the table for the correct date range.         
+                PRODUCTX ( 'AllPerfMnthly', ( 1 + 'AllPerfMnthly'[1 Month] ) ),
+                FILTER (
+                    ALL( 'Calendar'),
+                    'Calendar'[Date] >= BeginDate
+                        && 'Calendar'[Date] <= EndDate
+                )
+            )
+                - 1
+        )
+
+Inception pm pa =
+// Same as Inception except annualised. 
+VAR EndDate =
+    MAXX ( AllPerfMnthly, AllPerfMnthly[Date] )
+VAR BeginDate =
+    MAX (
+        CALCULATE (
+            FIRSTNONBLANK ( AllPerfMnthly[Date], AllPerfMnthly[Date] ),
+            ALLEXCEPT ( AllPerfMnthly, AllPerfMnthly[Name] )
+        ),
+        EOMONTH ( [FirstSharedDate], 1 )
+    )
+VAR Months =
+    IF (
+        EndDate >= BeginDate,
+        DATEDIFF ( BeginDate, EndDate, MONTH ) + 1,
+        BLANK ()
+    )
+RETURN
+    IF (
+        //Return blank if calculation doesn't make sense for the date range.Includes range being less than 12 months.
+        OR (
+            EndDate <= [FirstSharedDate],
+            Months < 12
+        ),
+        BLANK (),
+        IF (
+            BeginDate < [FirstSharedDate],
+            BLANK (),
+            CALCULATE (
+                PRODUCTX ( 'AllPerfMnthly', ( 1 + 'AllPerfMnthly'[1 Month] ) ),
+                FILTER (
+                    ALL ( 'Calendar' ),
+                    'Calendar'[Date] >= BeginDate
+                        && 'Calendar'[Date] <= EndDate
+                )
+            ) //Annualises the performance
+                ^ ( 12 / Months )
+                - 1
+        )
+    )
